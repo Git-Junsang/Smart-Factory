@@ -40,7 +40,7 @@ BASKET_INDEX = {
 }
 HOME_BASKET    = 0      # 시작 시 낙하 지점에 와 있다고 가정하는 바구니
 RAIL_SPEED     = 0.6    # 분류 레일(DC2) 듀티 사이클
-RAIL_STEP_TIME = 0.8    # 바구니 한 칸 이동 시간 (초) — 실측 후 보정
+RAIL_STEP_TIME = 0.4    # 바구니 한 칸 이동 시간 (초) — 간격 50% 축소 반영, 실측 후 보정
 
 # 검사대 서보 (앞 기울임) — 펄스폭→각도 보정
 # ES08MA2 같은 9g 서보는 가동범위가 ~90~120°라 0.5~2.4ms(180° 서보용)로 구동하면
@@ -51,7 +51,12 @@ SERVO_MIN_PULSE = 0.0010   # 1.0ms → 0°
 SERVO_MAX_PULSE = 0.0020   # 2.0ms → SERVO_MAX_ANGLE
 SERVO_MAX_ANGLE = 90       # 위 펄스폭이 만드는 가동 범위(도)
 TILT_LEVEL_ANGLE   = 0     # 평평(과일 안착)
-TILT_FORWARD_ANGLE = 60    # 앞으로 기울임(과일이 굴러 낙하) — 과회전 시 낮춰라
+TILT_FORWARD_ANGLE = 42    # 앞으로 기울임(과일이 굴러 낙하) — 과회전 시 낮춰라
+
+# 기울임 이동 속도 — AngularServo는 즉시 꺾이므로, 각도를 점진적으로 밟아
+# 천천히 움직이게 한다. SERVO_SWEEP_SPEED(도/초)가 0이면 즉시 이동.
+SERVO_SWEEP_SPEED = 300    # 도/초 (ES08MA2 정격 ~600°/s의 절반)
+SERVO_STEP_DEG    = 2      # 스윕 한 스텝 각도
 
 # ============================================================
 # GPIO 핀 매핑 (BCM 번호)
@@ -67,15 +72,16 @@ class Pins:
     BUTTON_RESET: int = 16   # 푸시버튼2: OLED 카운트 리셋
     IR_INSPECT:   int = 27   # 검사대 IR proximity (2cm 근접)
 
-    # ----- DC 모터 1: 검사 컨베이어 (L298N ch.A) -----
-    DC1_ENA: int = 12   # HW PWM
-    DC1_IN1: int = 23
-    DC1_IN2: int = 24
+    # ----- DC 모터 1: 검사 컨베이어 (L298N) -----
+    # ※ 실제 결선에서 두 모터가 반대로 연결돼 있어 DC1/DC2 핀을 맞바꿈
+    DC1_ENA: int = 18   # HW PWM
+    DC1_IN1: int = 5
+    DC1_IN2: int = 6
 
-    # ----- DC 모터 2: 분류 레일 / 바구니 위치 (L298N ch.B) -----
-    DC2_ENB: int = 18   # HW PWM
-    DC2_IN3: int = 5
-    DC2_IN4: int = 6
+    # ----- DC 모터 2: 분류 레일 / 바구니 위치 (L298N) -----
+    DC2_ENB: int = 12   # HW PWM
+    DC2_IN3: int = 23
+    DC2_IN4: int = 24
 
     # ----- 서보: 검사대 앞 기울임 (HW PWM) -----
     SERVO_TILT: int = 13
@@ -105,7 +111,7 @@ N_FRAMES       = 10     # 다수결 투표 프레임 수
 VOTE_MIN       = 6      # 신뢰 가능한 최소 동일 클래스 표 수 (N_FRAMES/2 이상)
 TILT_HOLD_TIME = 1.5    # 앞으로 기울인 채 유지(과일 낙하 대기) 시간 (초)
 DEBOUNCE_TIME  = 0.3    # 검사대 정지 후 흔들림 안정화 (초)
-CONVEYOR_SPEED = 0.7    # DC 모터 1 듀티 사이클 (0.0 ~ 1.0)
+CONVEYOR_SPEED = 0.35   # DC 모터 1 듀티 사이클 (0.0 ~ 1.0)
 
 # ============================================================
 # 모델

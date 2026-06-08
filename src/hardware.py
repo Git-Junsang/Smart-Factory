@@ -17,6 +17,7 @@ from src.config import (
     PINS, CONVEYOR_SPEED, RAIL_SPEED, RAIL_STEP_TIME, HOME_BASKET,
     TILT_LEVEL_ANGLE, TILT_FORWARD_ANGLE,
     SERVO_MIN_PULSE, SERVO_MAX_PULSE, SERVO_MAX_ANGLE,
+    SERVO_SWEEP_SPEED, SERVO_STEP_DEG,
 )
 
 # Pi 5는 lgpio 백엔드를 명시적으로 사용해야 함
@@ -50,6 +51,7 @@ class Hardware:
             min_pulse_width=SERVO_MIN_PULSE, max_pulse_width=SERVO_MAX_PULSE,
             initial_angle=TILT_LEVEL_ANGLE,
         )
+        self._tilt_angle = TILT_LEVEL_ANGLE   # 현재 기울임 각도 추적(점진 스윕용)
 
         # ---------- 푸시버튼 (풀업, 눌림=LOW) ----------
         # 버튼1: 누를 때마다 가동/중단 토글
@@ -114,13 +116,34 @@ class Hardware:
         self.rail.stop()
 
     # ===== 서보: 검사대 기울임 =====
+    def _sweep_tilt(self, target: float):
+        """현재 각도에서 target까지 SERVO_SWEEP_SPEED(도/초)로 점진 이동.
+
+        SERVO_SWEEP_SPEED가 0이면 즉시 이동(기존 동작).
+        """
+        cur = self._tilt_angle
+        if SERVO_SWEEP_SPEED <= 0 or target == cur:
+            self.tilt_servo.angle = target
+            self._tilt_angle = target
+            return
+        step_delay = SERVO_STEP_DEG / SERVO_SWEEP_SPEED
+        direction = 1 if target > cur else -1
+        a = cur
+        while a != target:
+            a += direction * SERVO_STEP_DEG
+            if (direction > 0 and a > target) or (direction < 0 and a < target):
+                a = target
+            self.tilt_servo.angle = a
+            time.sleep(step_delay)
+        self._tilt_angle = target
+
     def tilt_forward(self):
-        """검사대를 앞으로 기울여 과일을 굴려 낙하시킨다."""
-        self.tilt_servo.angle = TILT_FORWARD_ANGLE
+        """검사대를 앞으로 기울여 과일을 굴려 낙하시킨다(절반 속도 스윕)."""
+        self._sweep_tilt(TILT_FORWARD_ANGLE)
 
     def tilt_level(self):
-        """검사대를 다시 평평하게 복귀."""
-        self.tilt_servo.angle = TILT_LEVEL_ANGLE
+        """검사대를 다시 평평하게 복귀(절반 속도 스윕)."""
+        self._sweep_tilt(TILT_LEVEL_ANGLE)
 
     # ===== IR (active LOW) =====
     def inspection_triggered(self) -> bool:
