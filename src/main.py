@@ -1,17 +1,24 @@
 """상태머신 메인 루프.
 
+가동/중단은 푸시버튼1(토글)로 제어한다. 누를 때마다 RUN ↔ STOP이 뒤집힌다.
+
 상태 전이:
-  IDLE
-    └─(토글 ON)──→ RUNNING
-  RUNNING (컨베이어 가동)
+  IDLE  (중단중, LED3 ON)
+    └─(버튼1 → RUN)──→ RUNNING
+  RUNNING  (컨베이어 가동, LED1 ON)
     ├─(검사대 IR 감지)──→ INSPECTING
-    └─(토글 OFF)────────→ IDLE
-  INSPECTING (컨베이어 정지, N프레임 YOLO 추론)
+    └─(버튼1 → STOP)────→ IDLE
+  INSPECTING  (컨베이어 정지, N프레임 YOLO 추론, LED2 ON)
     ├─(클래스 확정)─────→ SORTING
-    └─(불확실)──────────→ RUNNING  (블럭 통과시킨 후)
-  SORTING (LED ON + 서보 기울임 + 컨베이어 재가동)
-    └─(도착 IR 감지 or 타임아웃)──→ RUNNING
-  토글 OFF 시 어느 상태에서든 IDLE로 복귀
+    └─(불확실)──────────→ SKIP
+  SORTING  (분류 레일 이동 → 검사대 앞으로 기울임 → 과일 낙하 → 카운트, LED2 ON)
+    └─→ RUNNING
+  버튼1로 STOP 시 어느 상태에서든 IDLE로 복귀.
+  버튼2는 어느 때든 OLED 카운트를 0으로 리셋.
+
+분류 메커니즘:
+  검사대는 앞으로만 기울어진다. 과일은 항상 같은 방향으로 굴러 떨어지고,
+  분류 레일(DC2)이 클래스에 맞는 바구니를 낙하 지점으로 이동시켜 받아낸다.
 
 실행:  python -m src.main
 """
@@ -19,17 +26,21 @@ import signal
 import time
 
 from src.config import (
-    PATH_MAP, CLASS_NAMES,
-    TILT_HOLD_TIME, DEBOUNCE_TIME, DROP_TIMEOUT,
+    BASKET_INDEX, CLASS_NAMES,
+    TILT_HOLD_TIME, DEBOUNCE_TIME,
 )
 from src.hardware import Hardware
 from src.vision import Vision
+from src.display import Display
 
 
 class FruitSorter:
     def __init__(self):
         self.hw = Hardware()
         self.vision = Vision()
+        self.display = Display()
+        # 버튼2(리셋) → OLED 카운트 0으로
+        self.hw.on_reset(self.display.reset)
         self.alive = True
         signal.signal(signal.SIGINT, self._on_sigint)
         signal.signal(signal.SIGTERM, self._on_sigint)
@@ -42,16 +53,18 @@ class FruitSorter:
     # 상태 핸들러
     # ============================================================
     def _idle(self):
-        """토글 OFF 상태에서 대기."""
+        """중단 상태에서 대기 (버튼1로 RUN 될 때까지). LED3 ON."""
         self.hw.reset()
-        print("[Main] IDLE — toggle the switch ON to start.")
+        self.hw.set_status("stop")
+        print("[Main] IDLE — press run button to start.")
         while self.alive and not self.hw.is_running:
             time.sleep(0.1)
 
     def _running(self) -> bool:
-        """컨베이어 가동 → 검사대 IR 트리거 대기.
-        Return: True=감지됨, False=토글 OFF로 중단."""
+        """컨베이어 가동 → 검사대 IR 트리거 대기. LED1 ON.
+        Return: True=감지됨, False=버튼1로 STOP."""
         print("[Main] RUNNING — conveyor on.")
+        self.hw.set_status("run")
         self.hw.conveyor_on()
         while self.alive and self.hw.is_running:
             if self.hw.inspection_triggered():
@@ -59,52 +72,45 @@ class FruitSorter:
                 time.sleep(DEBOUNCE_TIME)   # 정지 후 흔들림 안정화
                 return True
             time.sleep(0.02)
-        # 토글 OFF로 중단된 경우
+        # 버튼1로 STOP된 경우
         self.hw.conveyor_off()
         return False
 
     def _inspecting(self):
-        """N프레임 다수결 추론. 확정 클래스 반환 또는 None."""
+        """N프레임 다수결 추론. 확정 클래스 반환 또는 None. LED2 ON."""
         print("[Main] INSPECTING — running YOLO.")
+        self.hw.set_status("inspect")
         return self.vision.classify_stable()
 
     def _sorting(self, cls_id: int):
-        """LED ON → 서보 기울임 → 컨베이어 재가동 → 도착 IR 대기."""
+        """분류 레일로 알맞은 바구니를 낙하 지점에 정렬 → 검사대를 앞으로
+        기울여 과일 낙하 → 검사대 복귀 → 카운트 +1 (OLED 갱신). LED2 유지."""
         name = CLASS_NAMES[cls_id]
-        direction = PATH_MAP[cls_id]
-        print(f"[Main] SORTING — {name} → {direction}")
+        target = BASKET_INDEX[cls_id]
+        print(f"[Main] SORTING — {name} → basket #{target}")
+        self.hw.set_status("inspect")
 
-        # 1) LED 점등, 서보 기울임
-        self.hw.led_on(cls_id)
-        self.hw.set_path(direction)
-        time.sleep(0.3)   # 서보 회전 안정화
+        # 1) 분류 레일을 알맞은 바구니로 이동 (시간 기반 개루프)
+        self.hw.move_rail_to(target)
 
-        # 2) 컨베이어 재가동 (블럭을 분기 플랩 너머로 밀어냄)
-        self.hw.conveyor_on()
-
-        # 3) 도착 IR 감지 대기
-        t0 = time.time()
-        while self.alive and self.hw.is_running:
-            if self.hw.rail_triggered(cls_id):
-                print(f"[Main] Drop confirmed at {name} rail.")
-                break
-            if time.time() - t0 > DROP_TIMEOUT:
-                print(f"[Main] WARN: drop timeout ({DROP_TIMEOUT}s) for {name}.")
-                break
-            time.sleep(0.02)
-
-        # 4) 안정화 후 복귀
+        # 2) 검사대 앞으로 기울임 → 과일이 굴러 바구니로 낙하
+        self.hw.tilt_forward()
         time.sleep(TILT_HOLD_TIME)
-        self.hw.conveyor_off()
-        self.hw.set_path("neutral")
-        self.hw.led_off(cls_id)
+        self.hw.tilt_level()
+
+        # 3) 카운트 +1 → OLED 갱신
+        self.display.increment(cls_id)
+        print(f"[Main] counted {name}: {self.display.counts[cls_id]}")
 
     def _skip(self):
-        """분류 실패 시 — 블럭을 통과시키고 다음 사이클로."""
-        print("[Main] SKIP — no confident class. Passing through.")
-        self.hw.conveyor_on()
-        time.sleep(1.0)
-        self.hw.conveyor_off()
+        """분류 실패(불확실) 시 — 검사대를 기울여 과일만 비우고 카운트하지 않음.
+
+        과일이 현재 위치한 바구니로 떨어진다(레일 미이동). 카운트 제외.
+        """
+        print("[Main] SKIP — no confident class. Dropping without count.")
+        self.hw.tilt_forward()
+        time.sleep(TILT_HOLD_TIME)
+        self.hw.tilt_level()
 
     # ============================================================
     # 메인 루프
@@ -112,7 +118,7 @@ class FruitSorter:
     def run(self):
         try:
             while self.alive:
-                # 토글 OFF면 IDLE로
+                # 버튼1이 STOP이면 IDLE로
                 if not self.hw.is_running:
                     self._idle()
                     continue
@@ -120,7 +126,7 @@ class FruitSorter:
                 # 컨베이어 가동 → 검사대 도달 대기
                 inspected = self._running()
                 if not inspected:
-                    continue   # 토글 OFF로 중단됨
+                    continue   # 버튼1로 STOP됨
 
                 # YOLO 추론
                 cls_id = self._inspecting()
@@ -128,13 +134,14 @@ class FruitSorter:
                     self._skip()
                     continue
 
-                # 분기 + 낙하 확인
+                # 분류 레일 이동 + 기울여 낙하 + 카운트
                 self._sorting(cls_id)
 
         finally:
             print("[Main] Cleaning up.")
             self.hw.cleanup()
             self.vision.close()
+            self.display.close()
 
 
 if __name__ == "__main__":

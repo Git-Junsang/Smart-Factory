@@ -14,4 +14,4 @@ if __name__ == "__main__":
     model = YOLO("yolo11n.pt")
     model.export(format="ncnn", imgsz=320)
     print("\n[OK] NCNN model created → ./yolo11n_ncnn_model/")
-    print("이 폴더를 라즈베리파이의 fruit-sort/models/ 아래로 복사하세요.")
+    print("이 폴더를 라즈베리파이의 Smart-Factory/models/ 아래로 복사하세요.")

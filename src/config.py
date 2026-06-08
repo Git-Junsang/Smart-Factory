@@ -19,67 +19,76 @@ CLASS_NAMES = {
 }
 
 # ============================================================
-# 분류 경로 매핑
+# 분류 메커니즘 (시간 기반 개루프)
 # ------------------------------------------------------------
-# "left"    → 서보1(S1)만 45° 회전 (모터1 앞으로 기울어짐)
-# "right"   → 서보2(S2)만 45° 회전 (모터2 앞으로 기울어짐)
-# "neutral" → 두 서보 모두 0° (직진)
+# 검사대는 "앞으로만" 기울어진다(서보 1개). 과일은 항상 같은 방향으로
+# 굴러 떨어지고, 분류는 분류 레일(DC 모터 2)이 바구니 3개 중 알맞은
+# 바구니를 낙하 지점으로 이동시켜서 처리한다.
 #
-# 사용자 명세:
-#   - 바나나  → 모터1 앞으로 기울어짐  → "left"
-#   - 사과    → 모터2 앞으로 기울어짐  → "right"
-#   - 오렌지  → 모터2 앞으로 기울어짐  → "right"
+# DC 모터는 위치 피드백이 없으므로 시간 기반 개루프로 제어한다:
+#   - BASKET_INDEX: 클래스 → 레일 위 바구니 위치(0,1,2)
+#   - 현재 위치는 소프트웨어로 추적(self.current_basket), 시작 위치 = HOME_BASKET
+#   - 한 칸 이동 = RAIL_STEP_TIME 동안 RAIL_SPEED로 구동
 #
-# ※ 사과와 오렌지가 같은 도착점이라는 의미입니다.
-#    분리가 필요하면 아래 PATH_MAP만 수정하세요. 예: 오렌지를 직진으로 보내려면
-#    COCO_ORANGE: "neutral" 로 변경.
+# 바구니 재배치/오렌지·사과 위치 교환 등은 BASKET_INDEX만 수정.
+# 리미트 스위치를 달면 정확도가 올라간다(개루프는 누적 오차 가능).
 # ============================================================
-PATH_MAP = {
-    COCO_BANANA: "left",
-    COCO_APPLE:  "right",
-    COCO_ORANGE: "right",
+BASKET_INDEX = {
+    COCO_BANANA: 0,
+    COCO_ORANGE: 1,
+    COCO_APPLE:  2,
 }
+HOME_BASKET    = 0      # 시작 시 낙하 지점에 와 있다고 가정하는 바구니
+RAIL_SPEED     = 0.6    # 분류 레일(DC2) 듀티 사이클
+RAIL_STEP_TIME = 0.8    # 바구니 한 칸 이동 시간 (초) — 실측 후 보정
 
-# 경로별 (S1, S2) 각도 조합
-SERVO_ANGLE = {
-    "neutral": (0,  0),
-    "left":    (45, 0),
-    "right":   (0,  45),
-}
+# 검사대 서보(앞 기울임) 각도
+TILT_LEVEL_ANGLE   = 0    # 평평(과일 안착)
+TILT_FORWARD_ANGLE = 70   # 앞으로 기울임(과일이 굴러 낙하)
 
 # ============================================================
 # GPIO 핀 매핑 (BCM 번호)
 # ------------------------------------------------------------
 # Pi 5 하드웨어 PWM 가능 핀: GPIO12, 13, 18, 19
-# 서보의 안정성을 위해 SERVO_S1/S2를 HW PWM 핀에 배치.
+# 서보(SERVO_TILT)·모터 ENA/ENB를 HW PWM 핀에 배치해 지터를 줄였다.
+# OLED는 하드웨어 I2C(SDA=GPIO2, SCL=GPIO3) 고정 핀 사용.
 # ============================================================
 @dataclass(frozen=True)
 class Pins:
-    # ----- 입력 -----
-    TOGGLE_SWITCH:   int = 17   # 토글 스위치 (풀업, ON=LOW)
+    # ----- 입력 (푸시버튼: 풀업, 눌림=LOW / IR: 활성 LOW) -----
+    BUTTON_RUN:   int = 17   # 푸시버튼1: 가동/중단 토글
+    BUTTON_RESET: int = 16   # 푸시버튼2: OLED 카운트 리셋
+    IR_INSPECT:   int = 27   # 검사대 IR proximity (2cm 근접)
 
-    # IR proximity 센서 (활성 LOW — 일반 IR 장애물 모듈 기준)
-    # ※ 'PIR'은 인체감지용이라 2cm 근접 감지 불가. IR proximity 모듈 사용 가정.
-    IR_INSPECT:      int = 27   # 검사대 (분기점 직전)
-    IR_RAIL_BANANA:  int = 5    # 바나나 도착 레일
-    IR_RAIL_APPLE:   int = 6    # 사과 도착 레일
-    IR_RAIL_ORANGE:  int = 16   # 오렌지 도착 레일
+    # ----- DC 모터 1: 검사 컨베이어 (L298N ch.A) -----
+    DC1_ENA: int = 12   # HW PWM
+    DC1_IN1: int = 23
+    DC1_IN2: int = 24
 
-    # ----- DC 모터 (L298N) -----
-    DC_ENA: int = 12   # HW PWM
-    DC_IN1: int = 23
-    DC_IN2: int = 24
+    # ----- DC 모터 2: 분류 레일 / 바구니 위치 (L298N ch.B) -----
+    DC2_ENB: int = 18   # HW PWM
+    DC2_IN3: int = 5
+    DC2_IN4: int = 6
 
-    # ----- 서보 (HW PWM 권장) -----
-    SERVO_S1: int = 13
-    SERVO_S2: int = 18
+    # ----- 서보: 검사대 앞 기울임 (HW PWM) -----
+    SERVO_TILT: int = 13
 
-    # ----- 결과 알림 LED -----
-    LED_BANANA: int = 20
-    LED_APPLE:  int = 21
-    LED_ORANGE: int = 26
+    # ----- 상태 LED (항상 하나만 점등) -----
+    LED_RUN:     int = 20   # 가동중
+    LED_INSPECT: int = 21   # 검사/분류중
+    LED_STOP:    int = 26   # 사용자 중단중
 
 PINS = Pins()
+
+# ============================================================
+# OLED (SSD1306 128x64, I2C)
+# ============================================================
+OLED_I2C_PORT = 1
+OLED_ADDR     = 0x3C
+OLED_WIDTH    = 128
+OLED_HEIGHT   = 64
+# OLED 표시 순서 (사용자 명세: Banana / Orange / Apple)
+COUNT_ORDER   = [COCO_BANANA, COCO_ORANGE, COCO_APPLE]
 
 # ============================================================
 # 타이밍 / 임계값
@@ -87,10 +96,9 @@ PINS = Pins()
 CONF_TH        = 0.60   # YOLO 신뢰도 임계값
 N_FRAMES       = 10     # 다수결 투표 프레임 수
 VOTE_MIN       = 6      # 신뢰 가능한 최소 동일 클래스 표 수 (N_FRAMES/2 이상)
-TILT_HOLD_TIME = 2.0    # 서보 기울임 후 추가 대기 (초)
+TILT_HOLD_TIME = 1.5    # 앞으로 기울인 채 유지(과일 낙하 대기) 시간 (초)
 DEBOUNCE_TIME  = 0.3    # 검사대 정지 후 흔들림 안정화 (초)
-DROP_TIMEOUT   = 10.0   # 도착 IR 감지 타임아웃 (초)
-CONVEYOR_SPEED = 0.7    # DC 모터 듀티 사이클 (0.0 ~ 1.0)
+CONVEYOR_SPEED = 0.7    # DC 모터 1 듀티 사이클 (0.0 ~ 1.0)
 
 # ============================================================
 # 모델

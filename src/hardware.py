@@ -1,12 +1,21 @@
-"""GPIO/PWM 하드웨어 제어 계층 (Raspberry Pi 5 + gpiozero + lgpio)."""
-from gpiozero import (
-    Motor, AngularServo, LED, Button, DigitalInputDevice, Device,
-)
+"""GPIO/PWM 하드웨어 제어 계층 (Raspberry Pi 5 + gpiozero + lgpio).
+
+구성:
+  - DC 모터 1: 검사 컨베이어 (과일을 검사대로 이송)
+  - DC 모터 2: 분류 레일 (바구니 3개를 시간 기반 개루프로 위치 이동)
+  - 서보 1개: 검사대를 앞으로 기울여 과일을 낙하시킴
+  - 푸시버튼 2개: 가동/중단 토글, 카운트 리셋
+  - 상태 LED 3개: 가동중 / 검사·분류중 / 사용자 중단중 (항상 하나만 점등)
+  - IR proximity 1개: 검사대 근접 감지
+"""
+import time
+
+from gpiozero import Motor, AngularServo, LED, Button, DigitalInputDevice, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
 from src.config import (
-    PINS, SERVO_ANGLE, CONVEYOR_SPEED,
-    COCO_BANANA, COCO_APPLE, COCO_ORANGE,
+    PINS, CONVEYOR_SPEED, RAIL_SPEED, RAIL_STEP_TIME, HOME_BASKET,
+    TILT_LEVEL_ANGLE, TILT_FORWARD_ANGLE,
 )
 
 # Pi 5는 lgpio 백엔드를 명시적으로 사용해야 함
@@ -18,110 +27,133 @@ class Hardware:
     """모든 GPIO 디바이스를 캡슐화하는 컨테이너."""
 
     def __init__(self):
-        # ---------- DC 컨베이어 모터 (L298N) ----------
+        # ---------- DC 모터 1: 검사 컨베이어 ----------
         self.conveyor = Motor(
-            forward=PINS.DC_IN1,
-            backward=PINS.DC_IN2,
-            enable=PINS.DC_ENA,
-            pwm=True,
+            forward=PINS.DC1_IN1, backward=PINS.DC1_IN2,
+            enable=PINS.DC1_ENA, pwm=True,
         )
 
-        # ---------- 서보 두 개 ----------
-        # SG90 / MG90S 공통: pulse 0.5ms(0°) ~ 2.4ms(180°)
-        self.servo1 = AngularServo(
-            PINS.SERVO_S1,
-            min_angle=0, max_angle=90,
-            min_pulse_width=0.0005, max_pulse_width=0.0024,
-            initial_angle=0,
+        # ---------- DC 모터 2: 분류 레일 (바구니 위치) ----------
+        self.rail = Motor(
+            forward=PINS.DC2_IN3, backward=PINS.DC2_IN4,
+            enable=PINS.DC2_ENB, pwm=True,
         )
-        self.servo2 = AngularServo(
-            PINS.SERVO_S2,
+        # 위치 센서가 없으므로 현재 바구니 위치를 소프트웨어로 추적
+        self.current_basket = HOME_BASKET
+
+        # ---------- 서보: 검사대 앞 기울임 ----------
+        # SG90 / MG90S 공통: pulse 0.5ms(0°) ~ 2.4ms(90°)
+        self.tilt_servo = AngularServo(
+            PINS.SERVO_TILT,
             min_angle=0, max_angle=90,
             min_pulse_width=0.0005, max_pulse_width=0.0024,
-            initial_angle=0,
+            initial_angle=TILT_LEVEL_ANGLE,
         )
 
-        # ---------- 토글 스위치 ----------
-        # 풀업 — 스위치 ON 시 GND로 LOW → is_pressed=True
-        self.toggle = Button(PINS.TOGGLE_SWITCH, pull_up=True, bounce_time=0.05)
+        # ---------- 푸시버튼 (풀업, 눌림=LOW) ----------
+        # 버튼1: 누를 때마다 가동/중단 토글
+        self.btn_run = Button(PINS.BUTTON_RUN, pull_up=True, bounce_time=0.1)
+        self._running_flag = False
+        self.btn_run.when_pressed = self._toggle_running
+        # 버튼2: 카운트 리셋 — 콜백은 main에서 on_reset()으로 연결
+        self.btn_reset = Button(PINS.BUTTON_RESET, pull_up=True, bounce_time=0.1)
 
         # ---------- IR proximity 센서 (활성 LOW) ----------
         self.ir_inspect = DigitalInputDevice(
             PINS.IR_INSPECT, pull_up=True, bounce_time=0.05,
         )
-        self.ir_rails = {
-            COCO_BANANA: DigitalInputDevice(PINS.IR_RAIL_BANANA, pull_up=True, bounce_time=0.05),
-            COCO_APPLE:  DigitalInputDevice(PINS.IR_RAIL_APPLE,  pull_up=True, bounce_time=0.05),
-            COCO_ORANGE: DigitalInputDevice(PINS.IR_RAIL_ORANGE, pull_up=True, bounce_time=0.05),
-        }
 
-        # ---------- LED ----------
-        self.leds = {
-            COCO_BANANA: LED(PINS.LED_BANANA),
-            COCO_APPLE:  LED(PINS.LED_APPLE),
-            COCO_ORANGE: LED(PINS.LED_ORANGE),
-        }
+        # ---------- 상태 LED ----------
+        self.led_run     = LED(PINS.LED_RUN)
+        self.led_inspect = LED(PINS.LED_INSPECT)
+        self.led_stop    = LED(PINS.LED_STOP)
 
         self.reset()
 
-    # ===== 토글 스위치 =====
+    # ===== 가동/중단 버튼 (토글) =====
+    def _toggle_running(self):
+        """버튼1 눌림 콜백 — 가동/중단 플래그를 뒤집는다."""
+        self._running_flag = not self._running_flag
+        print(f"[HW] run button → {'RUN' if self._running_flag else 'STOP'}")
+
     @property
     def is_running(self) -> bool:
-        """토글 스위치가 ON 상태인지."""
-        return self.toggle.is_pressed
+        """현재 가동 요청 상태(버튼1 토글)."""
+        return self._running_flag
 
-    # ===== 컨베이어 =====
+    def on_reset(self, callback):
+        """버튼2(카운트 리셋) 눌림 콜백을 연결한다."""
+        self.btn_reset.when_pressed = callback
+
+    # ===== DC 모터 1: 컨베이어 =====
     def conveyor_on(self, speed: float = CONVEYOR_SPEED):
         self.conveyor.forward(speed)
 
     def conveyor_off(self):
         self.conveyor.stop()
 
-    # ===== 서보 =====
-    def set_path(self, direction: str):
-        """direction: 'neutral' | 'left' | 'right'"""
-        a1, a2 = SERVO_ANGLE[direction]
-        self.servo1.angle = a1
-        self.servo2.angle = a2
+    # ===== DC 모터 2: 분류 레일 (시간 기반 개루프) =====
+    def move_rail_to(self, target_index: int):
+        """분류 레일을 target_index 바구니가 낙하 지점에 오도록 이동.
 
-    def reset_servos(self):
-        self.set_path("neutral")
+        현재 위치와의 칸 차이만큼 RAIL_STEP_TIME 동안 구동한다(개루프).
+        """
+        delta = target_index - self.current_basket
+        if delta == 0:
+            return
+        if delta > 0:
+            self.rail.forward(RAIL_SPEED)
+        else:
+            self.rail.backward(RAIL_SPEED)
+        time.sleep(abs(delta) * RAIL_STEP_TIME)
+        self.rail.stop()
+        self.current_basket = target_index
+
+    def rail_stop(self):
+        self.rail.stop()
+
+    # ===== 서보: 검사대 기울임 =====
+    def tilt_forward(self):
+        """검사대를 앞으로 기울여 과일을 굴려 낙하시킨다."""
+        self.tilt_servo.angle = TILT_FORWARD_ANGLE
+
+    def tilt_level(self):
+        """검사대를 다시 평평하게 복귀."""
+        self.tilt_servo.angle = TILT_LEVEL_ANGLE
 
     # ===== IR (active LOW) =====
     def inspection_triggered(self) -> bool:
         """검사대 IR이 2cm 내 물체 감지 상태인지."""
         return not self.ir_inspect.value
 
-    def rail_triggered(self, class_id: int) -> bool:
-        """해당 도착 레일의 IR이 물체 감지 상태인지."""
-        return not self.ir_rails[class_id].value
-
-    # ===== LED =====
-    def led_on(self, class_id: int):
-        self.leds[class_id].on()
-
-    def led_off(self, class_id: int):
-        self.leds[class_id].off()
-
-    def all_leds_off(self):
-        for led in self.leds.values():
-            led.off()
+    # ===== 상태 LED (배타 점등) =====
+    def set_status(self, status):
+        """status: 'run' | 'inspect' | 'stop' | None — 해당 LED만 켜고 나머지 OFF."""
+        self.led_run.off()
+        self.led_inspect.off()
+        self.led_stop.off()
+        if status == "run":
+            self.led_run.on()
+        elif status == "inspect":
+            self.led_inspect.on()
+        elif status == "stop":
+            self.led_stop.on()
 
     # ===== 일괄 제어 =====
     def reset(self):
-        """안전한 정지 상태로 복귀."""
+        """안전한 정지 상태로 복귀 (모터 정지, 검사대 평평, LED OFF)."""
         self.conveyor_off()
-        self.reset_servos()
-        self.all_leds_off()
+        self.rail_stop()
+        self.tilt_level()
+        self.set_status(None)
 
     def cleanup(self):
         """프로그램 종료 시 모든 디바이스 정리."""
         self.reset()
         devices = [
-            self.conveyor, self.servo1, self.servo2,
-            self.toggle, self.ir_inspect,
-            *self.ir_rails.values(),
-            *self.leds.values(),
+            self.conveyor, self.rail, self.tilt_servo,
+            self.btn_run, self.btn_reset, self.ir_inspect,
+            self.led_run, self.led_inspect, self.led_stop,
         ]
         for dev in devices:
             try:
