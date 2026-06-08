@@ -42,9 +42,16 @@ HOME_BASKET    = 0      # 시작 시 낙하 지점에 와 있다고 가정하는
 RAIL_SPEED     = 0.6    # 분류 레일(DC2) 듀티 사이클
 RAIL_STEP_TIME = 0.8    # 바구니 한 칸 이동 시간 (초) — 실측 후 보정
 
-# 검사대 서보(앞 기울임) 각도
-TILT_LEVEL_ANGLE   = 0    # 평평(과일 안착)
-TILT_FORWARD_ANGLE = 70   # 앞으로 기울임(과일이 굴러 낙하)
+# 검사대 서보 (앞 기울임) — 펄스폭→각도 보정
+# ES08MA2 같은 9g 서보는 가동범위가 ~90~120°라 0.5~2.4ms(180° 서보용)로 구동하면
+# 기계 한계 너머로 밀려 과회전·스톨한다. 안전한 1.0~2.0ms로 좁히고, 그 범위가
+# 만드는 실제 회전을 SERVO_MAX_ANGLE로 둔다. 여전히 과하면 TILT_FORWARD_ANGLE을
+# 낮추거나 SERVO_MAX_PULSE를 줄여라.
+SERVO_MIN_PULSE = 0.0010   # 1.0ms → 0°
+SERVO_MAX_PULSE = 0.0020   # 2.0ms → SERVO_MAX_ANGLE
+SERVO_MAX_ANGLE = 90       # 위 펄스폭이 만드는 가동 범위(도)
+TILT_LEVEL_ANGLE   = 0     # 평평(과일 안착)
+TILT_FORWARD_ANGLE = 60    # 앞으로 기울임(과일이 굴러 낙하) — 과회전 시 낮춰라
 
 # ============================================================
 # GPIO 핀 매핑 (BCM 번호)

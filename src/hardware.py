@@ -16,6 +16,7 @@ from gpiozero.pins.lgpio import LGPIOFactory
 from src.config import (
     PINS, CONVEYOR_SPEED, RAIL_SPEED, RAIL_STEP_TIME, HOME_BASKET,
     TILT_LEVEL_ANGLE, TILT_FORWARD_ANGLE,
+    SERVO_MIN_PULSE, SERVO_MAX_PULSE, SERVO_MAX_ANGLE,
 )
 
 # Pi 5는 lgpio 백엔드를 명시적으로 사용해야 함
@@ -42,11 +43,11 @@ class Hardware:
         self.current_basket = HOME_BASKET
 
         # ---------- 서보: 검사대 앞 기울임 ----------
-        # SG90 / MG90S 공통: pulse 0.5ms(0°) ~ 2.4ms(90°)
+        # 펄스폭/가동범위는 config에서 보정 (ES08MA2 등 9g 서보 과회전 방지)
         self.tilt_servo = AngularServo(
             PINS.SERVO_TILT,
-            min_angle=0, max_angle=90,
-            min_pulse_width=0.0005, max_pulse_width=0.0024,
+            min_angle=0, max_angle=SERVO_MAX_ANGLE,
+            min_pulse_width=SERVO_MIN_PULSE, max_pulse_width=SERVO_MAX_PULSE,
             initial_angle=TILT_LEVEL_ANGLE,
         )
 

@@ -61,18 +61,18 @@ python -m scripts.test_camera     # 카메라+YOLO 단독 점검
 
 ## 핀 매핑 (BCM)
 
-| 부품 | 핀 | 비고 |
-| --- | --- | --- |
-| 푸시버튼1 (가동/중단) | GPIO17 | 풀업, 눌림=LOW |
-| 푸시버튼2 (카운트 리셋) | GPIO16 | 풀업, 눌림=LOW |
-| IR 검사대 | GPIO27 | 활성 LOW |
-| DC1 컨베이어 ENA/IN1/IN2 | GPIO12 / 23 / 24 | ENA=HW PWM |
-| DC2 분류 레일 ENB/IN3/IN4 | GPIO18 / 5 / 6 | ENB=HW PWM |
-| 서보 (검사대 기울임) | GPIO13 | HW PWM |
-| LED1 가동중 | GPIO20 | |
-| LED2 검사·분류중 | GPIO21 | |
-| LED3 중단중 | GPIO26 | |
-| OLED (SSD1306 128×64) | I2C SDA=GPIO2, SCL=GPIO3 | addr 0x3C |
+| 부품　　　　　　　　　　　| 핀　　　　　　　　　　　 | 비고　　　　　 |
+| ---------------------------| --------------------------| ----------------|
+| 푸시버튼1 (가동/중단)　　 | GPIO17　　　　　　　　　 | 풀업, 눌림=LOW |
+| 푸시버튼2 (카운트 리셋)　 | GPIO16　　　　　　　　　 | 풀업, 눌림=LOW |
+| IR 검사대　　　　　　　　 | GPIO27　　　　　　　　　 | 활성 LOW　　　 |
+| DC1 컨베이어 ENA/IN1/IN2　| GPIO12 / 23 / 24　　　　 | ENA=HW PWM　　 |
+| DC2 분류 레일 ENB/IN3/IN4 | GPIO18 / 5 / 6　　　　　 | ENB=HW PWM　　 |
+| 서보 (검사대 기울임)　　　| GPIO13　　　　　　　　　 | HW PWM　　　　 |
+| LED1 가동중　　　　　　　 | GPIO20　　　　　　　　　 | 　　　　　　　 |
+| LED2 검사·분류중　　　　　| GPIO21　　　　　　　　　 | 　　　　　　　 |
+| LED3 중단중　　　　　　　 | GPIO26　　　　　　　　　 | 　　　　　　　 |
+| OLED (SSD1306 128×64)　　 | I2C SDA=GPIO2, SCL=GPIO3 | addr 0x3C　　　|
 
 핀 변경은 `src/config.py`의 `Pins` 클래스만 수정.
 
