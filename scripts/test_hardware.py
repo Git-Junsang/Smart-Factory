@@ -22,7 +22,6 @@ MENU = """
   e: 상태 LED → 검사중(LED2)
   p: 상태 LED → 중단중(LED3)
   x: 상태 LED 모두 OFF
-  i: 검사대 IR 상태 출력
   b: 가동/중단 버튼(버튼1) 상태 출력
   q: 종료
 ========================================
@@ -57,8 +56,6 @@ def main():
                 hw.set_status("stop");    print("LED → stop")
             elif cmd == "x":
                 hw.set_status(None);      print("LED → all off")
-            elif cmd == "i":
-                print(f"IR inspection triggered: {hw.inspection_triggered()}")
             elif cmd == "b":
                 print(f"run button state (is_running): {hw.is_running}")
             elif cmd == "q":

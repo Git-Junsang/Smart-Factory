@@ -6,11 +6,12 @@
   - 서보 1개: 검사대를 앞으로 기울여 과일을 낙하시킴
   - 푸시버튼 2개: 가동/중단 토글, 카운트 리셋
   - 상태 LED 3개: 가동중 / 검사·분류중 / 사용자 중단중 (항상 하나만 점등)
-  - IR proximity 1개: 검사대 근접 감지
+
+검사대 물체 감지는 IR이 아니라 카메라(YOLO, src/vision.py)가 담당한다.
 """
 import time
 
-from gpiozero import Motor, AngularServo, LED, Button, DigitalInputDevice, Device
+from gpiozero import Motor, AngularServo, LED, Button, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
 from src.config import (
@@ -60,11 +61,6 @@ class Hardware:
         self.btn_run.when_pressed = self._toggle_running
         # 버튼2: 카운트 리셋 — 콜백은 main에서 on_reset()으로 연결
         self.btn_reset = Button(PINS.BUTTON_RESET, pull_up=True, bounce_time=0.1)
-
-        # ---------- IR proximity 센서 (활성 LOW) ----------
-        self.ir_inspect = DigitalInputDevice(
-            PINS.IR_INSPECT, pull_up=True, bounce_time=0.05,
-        )
 
         # ---------- 상태 LED ----------
         self.led_run     = LED(PINS.LED_RUN)
@@ -145,11 +141,6 @@ class Hardware:
         """검사대를 다시 평평하게 복귀(절반 속도 스윕)."""
         self._sweep_tilt(TILT_LEVEL_ANGLE)
 
-    # ===== IR (active LOW) =====
-    def inspection_triggered(self) -> bool:
-        """검사대 IR이 2cm 내 물체 감지 상태인지."""
-        return not self.ir_inspect.value
-
     # ===== 상태 LED (배타 점등) =====
     def set_status(self, status):
         """status: 'run' | 'inspect' | 'stop' | None — 해당 LED만 켜고 나머지 OFF."""
@@ -176,7 +167,7 @@ class Hardware:
         self.reset()
         devices = [
             self.conveyor, self.rail, self.tilt_servo,
-            self.btn_run, self.btn_reset, self.ir_inspect,
+            self.btn_run, self.btn_reset,
             self.led_run, self.led_inspect, self.led_stop,
         ]
         for dev in devices:

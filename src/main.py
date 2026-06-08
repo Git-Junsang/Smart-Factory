@@ -6,7 +6,7 @@
   IDLE  (중단중, LED3 ON)
     └─(버튼1 → RUN)──→ RUNNING
   RUNNING  (컨베이어 가동, LED1 ON)
-    ├─(검사대 IR 감지)──→ INSPECTING
+    ├─(카메라에 과일 감지 → 컨베이어 정지·2초 안정화)──→ INSPECTING
     └─(버튼1 → STOP)────→ IDLE
   INSPECTING  (컨베이어 정지, N프레임 YOLO 추론, LED2 ON)
     ├─(클래스 확정)─────→ SORTING
@@ -27,7 +27,7 @@ import time
 
 from src.config import (
     BASKET_INDEX, CLASS_NAMES,
-    TILT_HOLD_TIME, DEBOUNCE_TIME,
+    TILT_HOLD_TIME, CAMERA_STOP_TIME,
 )
 from src.hardware import Hardware
 from src.vision import Vision
@@ -61,15 +61,17 @@ class FruitSorter:
             time.sleep(0.1)
 
     def _running(self) -> bool:
-        """컨베이어 가동 → 검사대 IR 트리거 대기. LED1 ON.
+        """컨베이어 가동 → 카메라에 대상 과일이 감지될 때까지 대기. LED1 ON.
+        감지되면 컨베이어를 멈추고 CAMERA_STOP_TIME(2초) 안정화한다.
         Return: True=감지됨, False=버튼1로 STOP."""
         print("[Main] RUNNING — conveyor on.")
         self.hw.set_status("run")
         self.hw.conveyor_on()
         while self.alive and self.hw.is_running:
-            if self.hw.inspection_triggered():
+            if self.vision.detect() is not None:   # 카메라에 대상 과일 감지
+                print(f"[Main] 카메라 감지 — 컨베이어 정지 {CAMERA_STOP_TIME}s.")
                 self.hw.conveyor_off()
-                time.sleep(DEBOUNCE_TIME)   # 정지 후 흔들림 안정화
+                time.sleep(CAMERA_STOP_TIME)       # 정지 후 안정화
                 return True
             time.sleep(0.02)
         # 버튼1로 STOP된 경우
@@ -103,14 +105,27 @@ class FruitSorter:
         print(f"[Main] counted {name}: {self.display.counts[cls_id]}")
 
     def _skip(self):
-        """분류 실패(불확실) 시 — 검사대를 기울여 과일만 비우고 카운트하지 않음.
+        """분류 실패(불확실) 시 — 서보를 움직이지 않고 넘어간다.
 
-        과일이 현재 위치한 바구니로 떨어진다(레일 미이동). 카운트 제외.
+        세 과일(apple/banana/orange) 중 하나로 확정됐을 때만 검사대가
+        기울어지도록, 여기서는 기울임·카운트 모두 하지 않는다.
         """
-        print("[Main] SKIP — no confident class. Dropping without count.")
-        self.hw.tilt_forward()
-        time.sleep(TILT_HOLD_TIME)
-        self.hw.tilt_level()
+        print("[Main] SKIP — no confident class. (서보 미동작)")
+
+    def _wait_clear(self):
+        """다음 사이클 전, 카메라에 대상 과일이 더는 안 보일 때까지 대기.
+
+        분류돼 낙하한 과일은 화면에서 즉시 사라지고, 미분류로 남은 과일은
+        치워질 때까지 대기한다 — 같은 과일로 즉시 재감지·재처리되는 것을 막는다.
+        """
+        if self.vision.detect() is None:
+            return
+        print("[Main] 화면이 비워지길 대기 중...")
+        while self.alive and self.hw.is_running:
+            if self.vision.detect() is None:
+                print("[Main] 화면 비워짐 — 다음 사이클.")
+                return
+            time.sleep(0.1)
 
     # ============================================================
     # 메인 루프
@@ -132,10 +147,12 @@ class FruitSorter:
                 cls_id = self._inspecting()
                 if cls_id is None:
                     self._skip()
-                    continue
+                else:
+                    # 세 과일 중 하나로 확정됐을 때만 분류 레일 이동 + 기울여 낙하 + 카운트
+                    self._sorting(cls_id)
 
-                # 분류 레일 이동 + 기울여 낙하 + 카운트
-                self._sorting(cls_id)
+                # 다음 사이클 전 검사대가 비워질 때까지 대기 (상시감지 재트리거 방지)
+                self._wait_clear()
 
         finally:
             print("[Main] Cleaning up.")

@@ -40,6 +40,10 @@ class Vision:
     def get_frame(self) -> np.ndarray:
         return self.picam2.capture_array()
 
+    def detect(self) -> Optional[int]:
+        """한 프레임 캡처 + 추론 — 대상 클래스 id 또는 None (감지 트리거용)."""
+        return self.detect_once(self.get_frame())
+
     def detect_once(self, frame: np.ndarray) -> Optional[int]:
         """
         단일 프레임 추론.
