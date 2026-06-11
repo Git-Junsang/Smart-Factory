@@ -21,6 +21,7 @@ from src.config import (
 
 class Vision:
     def __init__(self):
+        # 기여자: 서준상 1.0 | 기능: Picamera2 시작 및 NCNN YOLO 모델 로딩(대상 3클래스 설정)
         # ---------- Picamera2 초기화 ----------
         self.picam2 = Picamera2()
         config = self.picam2.create_preview_configuration(
@@ -38,13 +39,16 @@ class Vision:
               f"{[CLASS_NAMES[c] for c in TARGET_CLASSES]}")
 
     def get_frame(self) -> np.ndarray:
+        # 기여자: 서준상 1.0 | 기능: 카메라에서 한 프레임 캡처
         return self.picam2.capture_array()
 
     def detect(self) -> Optional[int]:
+        # 기여자: 서준상 1.0 | 기능: 단일 프레임 추론 — RUNNING 중 과일 감지 트리거용
         """한 프레임 캡처 + 추론 — 대상 클래스 id 또는 None (감지 트리거용)."""
         return self.detect_once(self.get_frame())
 
     def detect_once(self, frame: np.ndarray) -> Optional[int]:
+        # 기여자: 서준상 1.0 | 기능: 주어진 프레임에서 최고 신뢰도 대상 클래스 추출(이중 필터링 안전망 포함)
         """
         단일 프레임 추론.
         Return: 대상 클래스 중 최고 신뢰도의 class_id, 또는 None.
@@ -75,6 +79,7 @@ class Vision:
         return cls_id
 
     def classify_stable(self) -> Optional[int]:
+        # 기여자: 서준상 1.0 | 기능: N프레임 다수결 투표로 최종 클래스 확정(최다 득표 VOTE_MIN 미만이면 None)
         """N프레임 다수결로 최종 클래스 결정.
         최다 득표가 VOTE_MIN 미만이면 None.
         """
@@ -99,6 +104,7 @@ class Vision:
         return top_cls
 
     def close(self):
+        # 기여자: 서준상 1.0 | 기능: 카메라 정지 및 자원 해제
         try:
             self.picam2.stop()
             self.picam2.close()

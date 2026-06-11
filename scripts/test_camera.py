@@ -10,6 +10,7 @@ from src.vision import Vision
 
 
 def main():
+    # 기여자: 서준상 1.0 | 기능: 비전 모듈 단독 점검 — 1초 주기로 classify_stable 결과를 반복 출력
     v = Vision()
     print("Press Ctrl+C to stop.\n")
     try:

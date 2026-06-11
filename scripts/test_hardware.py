@@ -29,6 +29,7 @@ MENU = """
 
 
 def main():
+    # 기여자: 박준규 0.5, 이윤성 0.5 | 기능: 키보드 메뉴로 컨베이어/분류레일/서보/LED/버튼을 수동 점검(비전 없이 결선 확인)
     hw = Hardware()
     hw.on_reset(lambda: print("[Test] reset button pressed"))
 
