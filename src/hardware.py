@@ -15,7 +15,8 @@ from gpiozero import Motor, AngularServo, LED, Button, Device
 from gpiozero.pins.lgpio import LGPIOFactory
 
 from src.config import (
-    PINS, CONVEYOR_SPEED, RAIL_SPEED, RAIL_STEP_TIME, HOME_BASKET,
+    PINS, CONVEYOR_SPEED, CONVEYOR_KICK_SPEED, CONVEYOR_KICK_TIME,
+    RAIL_SPEED, RAIL_STEP_TIME, HOME_BASKET,
     TILT_LEVEL_ANGLE, TILT_FORWARD_ANGLE,
     SERVO_MIN_PULSE, SERVO_MAX_PULSE, SERVO_MAX_ANGLE,
     SERVO_SWEEP_SPEED, SERVO_STEP_DEG,
@@ -91,6 +92,10 @@ class Hardware:
     # ===== DC 모터 1: 컨베이어 =====
     def conveyor_on(self, speed: float = CONVEYOR_SPEED):
         # 기여자: 서준상 0.4, 박준규 0.2, 이용희 0.2, 이윤성 0.2 | 기능: 검사 컨베이어(DC1) 정방향 가동
+        # 정지마찰을 못 이겨 저속에서 안 도는 것 방지: 잠깐 강하게(킥) 출발 후 목표 속도로
+        if CONVEYOR_KICK_TIME > 0 and CONVEYOR_KICK_SPEED > speed:
+            self.conveyor.forward(CONVEYOR_KICK_SPEED)
+            time.sleep(CONVEYOR_KICK_TIME)
         self.conveyor.forward(speed)
 
     def conveyor_off(self):
