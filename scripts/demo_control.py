@@ -27,7 +27,7 @@ def draw_counts(display, counts):
     """데모 카운트를 OLED 한 페이지에 그린다."""
     with canvas(display.device) as draw:
         y = 2
-        for idx in (0, 1, 2):
+        for idx in (1, 0, 2):   # 바구니 순서 1 → 0 → 2
             draw.text((4, y), f"{DEMO_LABELS[idx]}: {counts[idx]}", fill="white")
             y += 20
 
@@ -66,12 +66,12 @@ def main():
     steps = [
         ("1. 레일 가동",             rail_run),
         ("2. 레일 중단 (검사중)",     rail_stop),
-        ("3. 분류레일 0번 → Strawberry", sort_to(0)),
+        ("3. 분류레일 1번 → Orange",     sort_to(1)),
         ("4. 서보 기울임",           hw.tilt_forward),
         ("5. 서보 되돌림",           hw.tilt_level),
         ("6. 레일 가동",             rail_run),
         ("7. 레일 중단",             rail_stop),
-        ("8. 분류레일 1번 → Orange", sort_to(1)),
+        ("8. 분류레일 0번 → Strawberry", sort_to(0)),
         ("9. 서보 기울임",           hw.tilt_forward),
         ("10. 서보 되돌림",          hw.tilt_level),
         ("11. 레일 가동",            rail_run),
