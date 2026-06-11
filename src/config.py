@@ -51,7 +51,7 @@ SERVO_MIN_PULSE = 0.0010   # 1.0ms → 0°
 SERVO_MAX_PULSE = 0.0020   # 2.0ms → SERVO_MAX_ANGLE
 SERVO_MAX_ANGLE = 90       # 위 펄스폭이 만드는 가동 범위(도)
 TILT_LEVEL_ANGLE   = 5     # 시작/복귀 위치(5° 살짝 기울여 둠)
-TILT_FORWARD_ANGLE = 32    # 앞으로 기울임(과일이 굴러 낙하) — 최대 각도 10° 줄임
+TILT_FORWARD_ANGLE = 42    # 앞으로 기울임(과일이 굴러 낙하)
 
 # 기울임 이동 속도 — AngularServo는 즉시 꺾이므로, 각도를 점진적으로 밟아
 # 천천히 움직이게 한다. SERVO_SWEEP_SPEED(도/초)가 0이면 즉시 이동.
@@ -111,7 +111,7 @@ N_FRAMES       = 10     # 다수결 투표 프레임 수
 VOTE_MIN       = 6      # 신뢰 가능한 최소 동일 클래스 표 수 (N_FRAMES/2 이상)
 TILT_HOLD_TIME = 1.5    # 앞으로 기울인 채 유지(과일 낙하 대기) 시간 (초)
 CAMERA_STOP_TIME = 2.0  # 카메라가 대상 과일 감지 시 컨베이어 정지·안정화 대기 (초)
-CONVEYOR_SPEED = 0.35   # DC 모터 1 듀티 사이클 (0.0 ~ 1.0)
+CONVEYOR_SPEED = 0.21   # DC 모터 1 듀티 사이클 (0.0 ~ 1.0) — 기존 0.35의 40% 감속
 
 # ============================================================
 # 모델

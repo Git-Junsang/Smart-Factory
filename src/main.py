@@ -51,14 +51,6 @@ class FruitSorter:
         print("\n[Main] Stop signal received.")
         self.alive = False
 
-    def _sleep_interruptible(self, duration: float):
-        """duration초 대기하되, 종료/STOP되면 즉시 빠져나온다(블로킹 최소화)."""
-        t0 = time.time()
-        while time.time() - t0 < duration:
-            if not (self.alive and self.hw.is_running):
-                return
-            time.sleep(0.02)
-
     # ============================================================
     # 상태 핸들러
     # ============================================================
@@ -106,17 +98,13 @@ class FruitSorter:
         print(f"[Main] SORTING — {name} → basket #{target}")
         self.hw.set_status("inspect")
 
-        # 1) 분류 레일을 알맞은 바구니로 이동 (STOP 시 즉시 중단)
+        # 1) 분류 레일을 알맞은 바구니로 이동 (시간 기반 개루프)
         self.hw.move_rail_to(target)
-        if not self.hw.is_running:
-            return   # 사용자가 중단 — 기울임·카운트 생략
 
         # 2) 검사대 앞으로 기울임 → 과일이 굴러 바구니로 낙하
         self.hw.tilt_forward()
-        self._sleep_interruptible(TILT_HOLD_TIME)
+        time.sleep(TILT_HOLD_TIME)
         self.hw.tilt_level()
-        if not self.hw.is_running:
-            return   # 사용자가 중단 — 카운트 생략
 
         # 3) 카운트 +1 → OLED 갱신
         self.display.increment(cls_id)

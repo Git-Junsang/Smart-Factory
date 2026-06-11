@@ -111,14 +111,7 @@ class Hardware:
             self.rail.forward(RAIL_SPEED)
         else:
             self.rail.backward(RAIL_SPEED)
-        # 시간 구동을 잘게 쪼개 가동 중단(STOP)에 즉시 반응
-        duration = abs(delta) * RAIL_STEP_TIME
-        t0 = time.time()
-        while time.time() - t0 < duration:
-            if not self.is_running:      # STOP 시 즉시 정지
-                self.rail.stop()
-                return
-            time.sleep(0.02)
+        time.sleep(abs(delta) * RAIL_STEP_TIME)
         self.rail.stop()
         self.current_basket = target_index
 
